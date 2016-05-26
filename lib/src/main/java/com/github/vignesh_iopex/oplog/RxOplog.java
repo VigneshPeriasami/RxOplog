@@ -1,14 +1,10 @@
 package com.github.vignesh_iopex.oplog;
 
-import com.mongodb.Block;
 import com.mongodb.CursorType;
 import com.mongodb.MongoClient;
-import com.mongodb.client.FindIterable;
 import com.mongodb.client.MongoCollection;
-import com.mongodb.client.model.Filters;
-import org.bson.BsonTimestamp;
+import com.mongodb.client.MongoCursor;
 import org.bson.Document;
-import org.bson.conversions.Bson;
 import rx.Observable;
 import rx.Subscriber;
 
@@ -19,30 +15,34 @@ public class RxOplog {
     this.mongoClient = mongoClient;
   }
 
-  public static RxOplog create(String host, int port) {
+  public static RxOplog connect(String host, int port) {
     return new RxOplog(new MongoClient(host, port));
   }
 
-  private MongoCollection<Document> getOplogCollection() {
-    return mongoClient.getDatabase("local").getCollection("oplog.$main");
+  private MongoCollection<Document> getOplogCollection(String collectionName) {
+    return mongoClient.getDatabase("local").getCollection(collectionName);
   }
 
-  private Bson getTimestampQuery() {
-    return Filters.gt("ts", new BsonTimestamp((int) (System.currentTimeMillis() / 1000), 0));
-  }
-
-  private FindIterable<Document> getOplogCursor() {
-    return getOplogCollection().find(getTimestampQuery()).cursorType(CursorType.Tailable);
+  private MongoCursor<Document> getOplogIterable(CursorOptions cursorOptions) {
+    return getOplogCollection(cursorOptions.getCollectionName())
+        .find(cursorOptions.getOpQuery()).cursorType(CursorType.Tailable).iterator();
   }
 
   public Observable<Document> tail() {
+    return tail(CursorOptions.DEFAULT);
+  }
+
+  public Observable<Document> tail(final CursorOptions cursorOptions) {
     return Observable.create(new Observable.OnSubscribe<Document>() {
       @Override public void call(final Subscriber<? super Document> observer) {
-        getOplogCursor().forEach(new Block<Document>() {
-          @Override public void apply(Document doc) {
-            observer.onNext(doc);
+        MongoCursor<Document> iterator = getOplogIterable(cursorOptions);
+        while (iterator.hasNext()) {
+          if (observer.isUnsubscribed()) {
+            break;
           }
-        });
+          observer.onNext(iterator.next());
+        }
+        iterator.close();
         observer.onCompleted();
       }
     });
