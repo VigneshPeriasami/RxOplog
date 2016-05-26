@@ -21,7 +21,7 @@ public class Runner {
   }
 
   public static void main(String[] args) {
-    Observable<String> tailable = applyOperators(RxOplog.connect("10.10.100.220", 27017).tail());
+    Observable<String> tailable = applyOperators(RxOplog.connect("localhost", 27017).tail());
     tailable.subscribe(new Subscriber<String>() {
       @Override public void onCompleted() {
         System.out.println("Job listening to oplog is terminated");
